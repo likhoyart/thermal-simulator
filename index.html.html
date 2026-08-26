@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Thermal Simulator</title>
+<style>
+  :root{
+    --bg:#0a0a0a; --panel:#121212; --line:#2a2a2a; --text:#f2f2f2; --muted:#8a8a8a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif;min-height:100%}
+  body{display:flex;flex-direction:column}
+  header{height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid var(--line)}
+  .brand{font-size:14px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  .sub{font-size:12px;color:var(--muted)}
+  main{display:grid;grid-template-columns:320px 1fr;min-height:calc(100vh - 58px)}
+  aside{border-right:1px solid var(--line);padding:16px;background:var(--panel);overflow:auto}
+  .section{padding:0 0 18px;margin-bottom:18px;border-bottom:1px solid var(--line)}
+  .section:last-child{border-bottom:0}
+  h3{font-size:12px;margin:0 0 12px;text-transform:uppercase;letter-spacing:.08em;color:#bbb}
+  .drop{
+    border:1px dashed #4a4a4a;border-radius:12px;padding:22px 14px;text-align:center;cursor:pointer;
+    transition:.2s;background:#0e0e0e
+  }
+  .drop:hover,.drop.drag{border-color:#aaa;background:#151515}
+  .drop strong{display:block;font-size:14px;margin-bottom:6px}
+  .drop span{font-size:12px;color:var(--muted)}
+  input[type=file]{display:none}
+  .control{margin:13px 0}
+  .control-head{display:flex;justify-content:space-between;gap:12px;font-size:12px;margin-bottom:7px}
+  .control-head span:last-child{color:#888}
+  input[type=range]{width:100%;accent-color:white}
+  select,button{
+    width:100%;border:1px solid #343434;background:#171717;color:#eee;border-radius:9px;padding:10px 11px;font-size:13px
+  }
+  button{cursor:pointer}
+  button:hover{background:#202020}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .stage{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;overflow:hidden;background:#050505}
+  canvas{display:block;max-width:100%;max-height:calc(100vh - 58px);background:#000}
+  .empty{position:absolute;text-align:center;color:#666;font-size:13px;pointer-events:none}
+  .empty b{display:block;color:#aaa;margin-bottom:5px;font-size:15px}
+  .badge{font-size:11px;color:#777;margin-top:10px;line-height:1.4}
+  @media(max-width:760px){
+    main{grid-template-columns:1fr;display:flex;flex-direction:column-reverse}
+    aside{border-right:0;border-top:1px solid var(--line)}
+    .stage{min-height:56vh}
+    canvas{max-height:56vh}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">Thermal Simulator</div>
+  <div class="sub">photo / video → heatmap</div>
+</header>
+
+<main>
+<aside>
+  <div class="section">
+    <h3>Source</h3>
+    <label class="drop" id="drop">
+      <input id="file" type="file" accept="image/*,video/*">
+      <strong>Upload photo or video</strong>
+      <span>JPG, PNG, WEBP, MP4, MOV, WEBM</span>
+    </label>
+    <div class="badge">Файл обрабатывается локально в браузере.</div><div id="status" class="badge" style="color:#bbb">Ожидание файла…</div>
+  </div>
+
+  <div class="section">
+    <h3>Thermal look</h3>
+
+    <div class="control">
+      <div class="control-head"><span>Palette</span></div>
+      <select id="palette">
+        <option value="iron">Iron / classic thermal</option>
+        <option value="inferno">Inferno</option>
+        <option value="ice">Ice heatmap</option>
+        <option value="mono">Monochrome</option>
+      </select>
+    </div>
+
+    <div class="control">
+      <div class="control-head"><span>Threshold</span><span id="thresholdV">0.00</span></div>
+      <input id="threshold" type="range" min="0" max="0.85" step="0.01" value="0">
+    </div>
+
+    <div class="control">
+      <div class="control-head"><span>Softness</span><span id="softnessV">0.15</span></div>
+      <input id="softness" type="range" min="0.01" max="0.5" step="0.01" value="0.15">
+    </div>
+
+    <div class="control">
+      <div class="control-head"><span>Brightness</span><span id="brightnessV">1.00</span></div>
+      <input id="brightness" type="range" min="0.2" max="3" step="0.01" value="1">
+    </div>
+
+    <div class="control">
+      <div class="control-head"><span>Gamma</span><span id="gammaV">1.00</span></div>
+      <input id="gamma" type="range" min="0.25" max="3" step="0.01" value="1">
+    </div>
+
+    <div class="control">
+      <div class="control-head"><span>Contrast</span><span id="contrastV">1.10</span></div>
+      <input id="contrast" type="range" min="0.3" max="3" step="0.01" value="1.1">
+    </div>
+
+    <div class="control">
+      <div class="control-head"><span>Grain</span><span id="grainV">0.03</span></div>
+      <input id="grain" type="range" min="0" max="0.3" step="0.01" value="0.03">
+    </div>
+
+    <div class="control">
+      <div class="control-head"><span>Quality</span></div>
+      <select id="quality">
+        <option value="1">Full</option>
+        <option value="0.75">High</option>
+        <option value="0.5" selected>Balanced</option>
+        <option value="0.35">Fast</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Output</h3>
+    <div class="row">
+      <button id="fullscreen">Fullscreen</button>
+      <button id="download">Save PNG</button>
+    </div>
+  </div>
+</aside>
+
+<section class="stage" id="stage">
+  <canvas id="canvas"></canvas>
+  <div class="empty" id="empty"><b>No media loaded</b>Upload an image or video</div>
+</section>
+</main>
+
+<video id="video" playsinline muted loop style="display:none"></video>
+<img id="image" alt="" style="display:none">
+
+<script>
+const fileInput = document.getElementById('file');
+const drop = document.getElementById('drop');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d', { willReadFrequently:true });
+const video = document.getElementById('video');
+const image = document.getElementById('image');
+const empty = document.getElementById('empty');
+const stage = document.getElementById('stage');
+const status = document.getElementById('status');
+
+const controls = ['threshold','softness','brightness','gamma','contrast','grain'];
+for (const id of controls) {
+  const el = document.getElementById(id);
+  const v = document.getElementById(id+'V');
+  el.addEventListener('input', () => { v.textContent = (+el.value).toFixed(2); renderStill(); });
+}
+document.getElementById('palette').addEventListener('change', renderStill);
+document.getElementById('quality').addEventListener('change', resizeForSource);
+
+let sourceType = null;
+let objectURL = null;
+let animId = null;
+let srcW = 0, srcH = 0;
+
+const clamp = (v,a=0,b=1) => Math.max(a,Math.min(b,v));
+const mix = (a,b,t) => a + (b-a)*t;
+function smoothstep(a,b,x){
+  const t = clamp((x-a)/(b-a));
+  return t*t*(3-2*t);
+}
+function paletteColor(t, name){
+  t = clamp(t);
+  let stops;
+  if(name==='iron'){
+    stops = [
+      [0.00,[0,0,0]],
+      [0.13,[18,7,58]],
+      [0.28,[55,19,111]],
+      [0.43,[120,21,111]],
+      [0.57,[191,42,65]],
+      [0.72,[244,92,22]],
+      [0.86,[255,191,35]],
+      [1.00,[255,255,238]]
+    ];
+  } else if(name==='inferno'){
+    stops = [
+      [0,[0,0,4]],[.18,[39,12,74]],[.38,[101,21,110]],[.58,[170,42,73]],
+      [.76,[225,92,36]],[.9,[249,164,38]],[1,[252,255,164]]
+    ];
+  } else if(name==='ice'){
+    stops = [
+      [0,[0,0,0]],[.25,[0,25,90]],[.5,[0,150,220]],[.72,[80,245,230]],[1,[245,255,255]]
+    ];
+  } else {
+    const g = Math.round(t*255); return [g,g,g];
+  }
+  for(let i=0;i<stops.length-1;i++){
+    const a=stops[i], b=stops[i+1];
+    if(t>=a[0] && t<=b[0]){
+      const u=(t-a[0])/(b[0]-a[0]);
+      return [
+        Math.round(mix(a[1][0],b[1][0],u)),
+        Math.round(mix(a[1][1],b[1][1],u)),
+        Math.round(mix(a[1][2],b[1][2],u))
+      ];
+    }
+  }
+  return stops[stops.length-1][1];
+}
+
+function resizeForSource(){
+  if(!srcW || !srcH) return;
+  const q = +document.getElementById('quality').value;
+  const maxSide = 1500;
+  let scale = Math.min(1, maxSide/Math.max(srcW,srcH)) * q;
+  canvas.width = Math.max(2, Math.round(srcW*scale));
+  canvas.height = Math.max(2, Math.round(srcH*scale));
+  renderStill();
+}
+
+function drawSource(){
+  if(sourceType==='image') ctx.drawImage(image,0,0,canvas.width,canvas.height);
+  else if(sourceType==='video') ctx.drawImage(video,0,0,canvas.width,canvas.height);
+}
+
+function applyThermal(){
+  const img = ctx.getImageData(0,0,canvas.width,canvas.height);
+  const d = img.data;
+  const threshold = +document.getElementById('threshold').value;
+  const softness = +document.getElementById('softness').value;
+  const brightness = +document.getElementById('brightness').value;
+  const gamma = +document.getElementById('gamma').value;
+  const contrast = +document.getElementById('contrast').value;
+  const grain = +document.getElementById('grain').value;
+  const pal = document.getElementById('palette').value;
+
+  for(let i=0;i<d.length;i+=4){
+    let l = (0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2]) / 255;
+    l = (l - .5)*contrast + .5;
+    l = clamp(l * brightness);
+    l = Math.pow(clamp(l), 1/gamma);
+
+    if(threshold>0){
+      const edge0 = threshold-softness;
+      const edge1 = threshold+softness;
+      l = smoothstep(edge0, edge1, l);
+    }
+
+    if(grain>0) l = clamp(l + (Math.random()-.5)*grain);
+
+    const c = paletteColor(l,pal);
+    d[i]=c[0]; d[i+1]=c[1]; d[i+2]=c[2]; d[i+3]=255;
+  }
+  ctx.putImageData(img,0,0);
+}
+
+function renderStill(){
+  if(!sourceType || !canvas.width) return;
+  if(sourceType==='video' && !video.paused) return;
+  drawSource();
+  applyThermal();
+}
+
+function loop(){
+  if(sourceType!=='video') return;
+  drawSource();
+  applyThermal();
+  animId = requestAnimationFrame(loop);
+}
+
+function stopLoop(){
+  if(animId) cancelAnimationFrame(animId);
+  animId = null;
+}
+
+function loadFile(file){
+  if(!file){
+    status.textContent='Файл не выбран.';
+    return;
+  }
+
+  stopLoop();
+  video.pause();
+  video.removeAttribute('src');
+  image.removeAttribute('src');
+
+  if(objectURL) URL.revokeObjectURL(objectURL);
+  objectURL = URL.createObjectURL(file);
+
+  const type = (file.type || '').toLowerCase();
+  const name = (file.name || '').toLowerCase();
+
+  const isVideo = type.startsWith('video/') || /\.(mp4|mov|m4v|webm)$/i.test(name);
+  const isImage = type.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|heic|heif)$/i.test(name);
+
+  status.textContent = `Выбран: ${file.name || 'файл'} (${type || 'тип не определён'})`;
+
+  if(isVideo){
+    sourceType='video';
+    empty.style.display='none';
+    status.textContent += ' — загружаю видео…';
+
+    video.onloadedmetadata=()=>{
+      srcW=video.videoWidth;
+      srcH=video.videoHeight;
+
+      if(!srcW || !srcH){
+        status.textContent='Ошибка: браузер не смог определить размер видео.';
+        return;
+      }
+
+      resizeForSource();
+      status.textContent=`Видео загружено: ${srcW}×${srcH}. Нажмите по экрану, если воспроизведение не началось автоматически.`;
+
+      const start = async()=>{
+        try{
+          await video.play();
+          stopLoop();
+          loop();
+          status.textContent=`Видео работает: ${srcW}×${srcH}`;
+        }catch(err){
+          drawSource();
+          applyThermal();
+          status.textContent='Видео загружено, но автозапуск заблокирован. Нажмите по изображению.';
+        }
+      };
+      start();
+    };
+
+    video.onerror=()=>{
+      const code = video.error ? video.error.code : 'unknown';
+      status.textContent=`Ошибка загрузки видео (код ${code}). Попробуйте MP4/H.264.`;
+      empty.style.display='';
+    };
+
+    video.src=objectURL;
+    video.load();
+
+  } else if(isImage){
+    sourceType='image';
+    empty.style.display='none';
+    status.textContent += ' — загружаю изображение…';
+
+    image.onload=()=>{
+      srcW=image.naturalWidth;
+      srcH=image.naturalHeight;
+
+      if(!srcW || !srcH){
+        status.textContent='Ошибка: браузер не смог прочитать размер изображения.';
+        return;
+      }
+
+      resizeForSource();
+      renderStill();
+      status.textContent=`Изображение работает: ${srcW}×${srcH}`;
+    };
+
+    image.onerror=()=>{
+      status.textContent='Ошибка чтения изображения. Для проверки попробуйте JPG или PNG.';
+      empty.style.display='';
+    };
+
+    image.src=objectURL;
+
+  } else {
+    sourceType=null;
+    status.textContent=`Формат не распознан: ${file.name || ''}. Попробуйте JPG, PNG или MP4.`;
+    empty.style.display='';
+  }
+}
+
+fileInput.addEventListener('change', e=>loadFile(e.target.files[0]));
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('drag')}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('drag')}));
+drop.addEventListener('drop', e=>loadFile(e.dataTransfer.files[0]));
+
+stage.addEventListener('click', async()=>{
+  if(sourceType==='video' && video.paused){
+    try{ await video.play(); stopLoop(); loop(); status.textContent=`Видео работает: ${srcW}×${srcH}`; }catch(e){ status.textContent='Не удалось запустить видео в этом браузере.'; }
+  }
+});
+
+document.getElementById('fullscreen').onclick = async()=>{
+  try{
+    if(document.fullscreenElement) await document.exitFullscreen();
+    else await stage.requestFullscreen();
+  }catch(e){}
+};
+
+document.getElementById('download').onclick = ()=>{
+  if(!sourceType) return;
+  const a=document.createElement('a');
+  a.download='thermal-frame.png';
+  a.href=canvas.toDataURL('image/png');
+  a.click();
+};
+</script>
+</body>
+</html>
